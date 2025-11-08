@@ -167,6 +167,16 @@
         <h2 style="margin-top: 24px;">家具リスト</h2>
         <div id="furnitureList"></div>
         
+        <h2 style="margin-top: 24px;">データ管理</h2>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="add-btn" style="background: #2196F3;" onclick="exportData()">エクスポート</button>
+            <label class="add-btn" style="background: #FF9800; display: flex; align-items: center; justify-content: center;">
+                インポート
+                <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importData(event)">
+            </label>
+            <button class="add-btn" style="background: #f44336;" onclick="clearAll()">全データ削除</button>
+        </div>
+        
         <div class="info">
             <strong>操作方法:</strong>
             左クリック: 配置<br>
@@ -235,10 +245,15 @@
             drawGrid();
             setupEvents();
             
-            // 初期家具を追加
-            //addFurnitureType('ソファ', 3, 2);
-            //addFurnitureType('テーブル', 2, 2);
-            //addFurnitureType('ベッド', 2, 3);
+            // ローカルストレージからデータを読み込む
+            loadFromLocalStorage();
+            
+            // 初期家具がない場合のみデフォルト家具を追加
+            if (furnitureTypes.length === 0) {
+                addFurnitureType('ソファ', 3, 2);
+                addFurnitureType('テーブル', 2, 2);
+                addFurnitureType('ベッド', 2, 3);
+            }
         }
 
         function addFurnitureType(name, width, height) {
@@ -255,6 +270,7 @@
             
             furnitureTypes.push(furniture);
             updateFurnitureList();
+            saveToLocalStorage();
             
             if (furnitureTypes.length === 1) {
                 selectFurniture(0);
@@ -283,6 +299,7 @@
             
             updateFurnitureList();
             drawGrid();
+            saveToLocalStorage();
         }
 
         function updateFurnitureList() {
@@ -555,6 +572,7 @@
             }
             
             drawGrid();
+            saveToLocalStorage();
         }
 
         function removeFurniture(x, y) {
@@ -572,6 +590,7 @@
             }
             
             drawGrid();
+            saveToLocalStorage();
         }
 
         function setupEvents() {
@@ -642,6 +661,159 @@
                     }
                 }
             });
+        }
+
+        // ローカルストレージ関連の関数
+        function saveToLocalStorage() {
+            try {
+                const data = {
+                    furnitureTypes: furnitureTypes,
+                    grid: grid,
+                    nextFurnitureId: nextFurnitureId,
+                    colorIndex: colorIndex
+                };
+                localStorage.setItem('furnitureSimulatorData', JSON.stringify(data));
+            } catch (e) {
+                console.error('保存に失敗しました:', e);
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const saved = localStorage.getItem('furnitureSimulatorData');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    furnitureTypes = data.furnitureTypes || [];
+                    grid = data.grid || [];
+                    nextFurnitureId = data.nextFurnitureId || 1;
+                    colorIndex = data.colorIndex || 0;
+                    
+                    // グリッドが不完全な場合は初期化
+                    if (grid.length !== GRID_SIZE) {
+                        for (let i = 0; i < GRID_SIZE; i++) {
+                            grid[i] = grid[i] || [];
+                            for (let j = 0; j < GRID_SIZE; j++) {
+                                grid[i][j] = grid[i][j] || null;
+                            }
+                        }
+                    }
+                    
+                    if (furnitureTypes.length > 0) {
+                        selectedFurniture = furnitureTypes[0];
+                    }
+                    
+                    updateFurnitureList();
+                    drawGrid();
+                }
+            } catch (e) {
+                console.error('読み込みに失敗しました:', e);
+            }
+        }
+
+        // エクスポート・インポート関連の関数
+        function exportData() {
+            try {
+                const data = {
+                    version: '1.0.0',
+                    timestamp: new Date().toISOString(),
+                    furnitureTypes: furnitureTypes,
+                    grid: grid,
+                    nextFurnitureId: nextFurnitureId,
+                    colorIndex: colorIndex
+                };
+                
+                const json = JSON.stringify(data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `furniture-layout-${Date.now()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                alert('データをエクスポートしました');
+            } catch (e) {
+                console.error('エクスポートに失敗しました:', e);
+                alert('エクスポートに失敗しました');
+            }
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    // データの検証
+                    if (!data.furnitureTypes || !data.grid) {
+                        throw new Error('無効なデータ形式です');
+                    }
+                    
+                    furnitureTypes = data.furnitureTypes;
+                    grid = data.grid;
+                    nextFurnitureId = data.nextFurnitureId || 1;
+                    colorIndex = data.colorIndex || 0;
+                    
+                    // グリッドの整合性チェック
+                    if (grid.length !== GRID_SIZE) {
+                        for (let i = 0; i < GRID_SIZE; i++) {
+                            grid[i] = grid[i] || [];
+                            for (let j = 0; j < GRID_SIZE; j++) {
+                                grid[i][j] = grid[i][j] || null;
+                            }
+                        }
+                    }
+                    
+                    if (furnitureTypes.length > 0) {
+                        selectedFurniture = furnitureTypes[0];
+                    } else {
+                        selectedFurniture = null;
+                    }
+                    
+                    updateFurnitureList();
+                    drawGrid();
+                    saveToLocalStorage();
+                    
+                    alert('データをインポートしました');
+                } catch (e) {
+                    console.error('インポートに失敗しました:', e);
+                    alert('インポートに失敗しました: ' + e.message);
+                }
+            };
+            
+            reader.readAsText(file);
+            event.target.value = ''; // 同じファイルを再選択できるようにリセット
+        }
+
+        function clearAll() {
+            if (!confirm('全てのデータを削除しますか？この操作は取り消せません。')) {
+                return;
+            }
+            
+            // グリッドをクリア
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    grid[i][j] = null;
+                }
+            }
+            
+            // 家具タイプをクリア
+            furnitureTypes = [];
+            selectedFurniture = null;
+            nextFurnitureId = 1;
+            colorIndex = 0;
+            
+            updateFurnitureList();
+            drawGrid();
+            saveToLocalStorage();
+            
+            alert('全データを削除しました');
         }
 
         window.onload = init;
