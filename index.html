@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家具シミュレーションツール</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f0f0f0;
+            display: flex;
+            gap: 20px;
+        }
+        #canvas-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        #controls {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            min-width: 280px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 18px;
+        }
+        .furniture-item {
+            padding: 12px;
+            margin: 8px 0;
+            background: #f8f8f8;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+        }
+        .furniture-item:hover {
+            background: #e8e8e8;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        .furniture-item.selected {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+        }
+        .furniture-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        .color-box {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid #999;
+        }
+        .delete-btn {
+            padding: 4px 10px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .delete-btn:hover {
+            background: #d32f2f;
+        }
+        .input-group {
+            margin-bottom: 12px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 4px;
+            color: #555;
+            font-size: 13px;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .size-input {
+            display: flex;
+            gap: 8px;
+            margin: 12px 0;
+            align-items: center;
+        }
+        .size-input input {
+            width: 60px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .add-btn {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .add-btn:hover {
+            background: #45a049;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 12px;
+            background: #fff3cd;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .info strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #856404;
+        }
+        .furniture-name {
+            font-weight: 500;
+        }
+        canvas {
+            cursor: default;
+        }
+        canvas.dragging {
+            cursor: grabbing !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="controls">
+        <h2>家具を追加</h2>
+        <div class="input-group">
+            <label>家具名:</label>
+            <input type="text" id="nameInput" placeholder="例: ソファ" value="家具">
+        </div>
+        <div class="size-input">
+            <label>幅:</label>
+            <input type="number" id="widthInput" min="1" max="10" value="2">
+            <label>高さ:</label>
+            <input type="number" id="heightInput" min="1" max="10" value="2">
+        </div>
+        <button class="add-btn" onclick="addFurniture()">家具を追加</button>
+        
+        <h2 style="margin-top: 24px;">家具リスト</h2>
+        <div id="furnitureList"></div>
+        
+        <div class="info">
+            <strong>操作方法:</strong>
+            左クリック: 配置<br>
+            右クリック: 削除<br>
+            中クリック+ドラッグ: ビュー移動<br>
+            Rキー: 回転<br>
+            マウスホバー: 配置プレビュー
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 20;
+        const TILE_WIDTH = 32;
+        const TILE_HEIGHT = 16;
+        const LINE_COLOR = 0x666666;
+        const LINE_THICK = 3;
+        const LINE_THIN = 1;
+
+        let app, container, previewContainer, grid = [];
+        let selectedFurniture = null;
+        let furnitureTypes = [];
+        let furnitureGraphics = [];
+        let rotation = 0;
+        let previewPos = null;
+        let nextFurnitureId = 1;
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let containerOffset = { x: 450, y: 50 };
+
+        // カラーパレット
+        const colors = [
+            0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xFFA07A,
+            0x98D8C8, 0xF7DC6F, 0xBB8FCE, 0x85C1E2,
+            0xF8B88B, 0xA3CB38, 0xFF7979, 0x6C5CE7,
+            0xE17055, 0x74B9FF, 0xA29BFE, 0xFD79A8
+        ];
+        let colorIndex = 0;
+
+        function init() {
+            app = new PIXI.Application({
+                width: 900,
+                height: 600,
+                backgroundColor: 0xffffff,
+                antialias: true
+            });
+            document.getElementById('canvas-container').appendChild(app.view);
+
+            container = new PIXI.Container();
+            container.x = containerOffset.x;
+            container.y = containerOffset.y;
+            app.stage.addChild(container);
+
+            previewContainer = new PIXI.Container();
+            previewContainer.x = containerOffset.x;
+            previewContainer.y = containerOffset.y;
+            app.stage.addChild(previewContainer);
+
+            // グリッドの初期化
+            for (let i = 0; i < GRID_SIZE; i++) {
+                grid[i] = [];
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    grid[i][j] = null;
+                }
+            }
+
+            drawGrid();
+            setupEvents();
+            
+            // 初期家具を追加
+            //addFurnitureType('ソファ', 3, 2);
+            //addFurnitureType('テーブル', 2, 2);
+            //addFurnitureType('ベッド', 2, 3);
+        }
+
+        function addFurnitureType(name, width, height) {
+            const color = colors[colorIndex % colors.length];
+            colorIndex++;
+            
+            const furniture = {
+                id: nextFurnitureId++,
+                width: width,
+                height: height,
+                color: color,
+                name: name
+            };
+            
+            furnitureTypes.push(furniture);
+            updateFurnitureList();
+            
+            if (furnitureTypes.length === 1) {
+                selectFurniture(0);
+            }
+        }
+
+        function removeFurnitureType(id) {
+            const index = furnitureTypes.findIndex(f => f.id === id);
+            if (index === -1) return;
+            
+            // 配置済みの家具を削除
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (grid[i][j] && grid[i][j].typeId === id) {
+                        grid[i][j] = null;
+                    }
+                }
+            }
+            
+            furnitureTypes.splice(index, 1);
+            
+            // 選択中の家具が削除された場合
+            if (selectedFurniture && selectedFurniture.id === id) {
+                selectedFurniture = furnitureTypes.length > 0 ? furnitureTypes[0] : null;
+            }
+            
+            updateFurnitureList();
+            drawGrid();
+        }
+
+        function updateFurnitureList() {
+            const list = document.getElementById('furnitureList');
+            list.innerHTML = '';
+            
+            if (furnitureTypes.length === 0) {
+                list.innerHTML = '<div style="color: #999; text-align: center; padding: 20px;">家具がありません</div>';
+                return;
+            }
+            
+            furnitureTypes.forEach((f, idx) => {
+                const div = document.createElement('div');
+                div.className = 'furniture-item' + (selectedFurniture && selectedFurniture.id === f.id ? ' selected' : '');
+                div.onclick = (e) => {
+                    if (!e.target.classList.contains('delete-btn')) {
+                        selectFurniture(idx);
+                    }
+                };
+                
+                div.innerHTML = `
+                    <div class="furniture-info">
+                        <div class="color-box" style="background-color: #${f.color.toString(16).padStart(6, '0')}"></div>
+                        <div>
+                            <div class="furniture-name">${f.name}</div>
+                            <div style="font-size: 12px; color: #777;">${f.width}x${f.height}</div>
+                        </div>
+                    </div>
+                    <button class="delete-btn" onclick="event.stopPropagation(); removeFurnitureType(${f.id})">削除</button>
+                `;
+                
+                list.appendChild(div);
+            });
+        }
+
+        function selectFurniture(index) {
+            selectedFurniture = furnitureTypes[index];
+            rotation = 0;
+            updateFurnitureList();
+        }
+
+        function addFurniture() {
+            const name = document.getElementById('nameInput').value.trim() || '家具';
+            const w = parseInt(document.getElementById('widthInput').value);
+            const h = parseInt(document.getElementById('heightInput').value);
+            
+            if (w >= 1 && w <= 10 && h >= 1 && h <= 10) {
+                addFurnitureType(name, w, h);
+                document.getElementById('nameInput').value = '家具';
+            } else {
+                alert('幅と高さは1〜10の範囲で指定してください');
+            }
+        }
+
+        function drawGrid() {
+            container.removeChildren();
+            furnitureGraphics = [];
+
+            // 家具を描画
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (grid[i][j]) {
+                        drawTile(i, j, grid[i][j].color);
+                    } else {
+                        drawTile(i, j, 0xf5f5f5);
+                    }
+                }
+            }
+
+            // 家具の境界線を描画
+            drawFurnitureBorders();
+            
+            // グリッド線を描画
+            drawGridLines();
+        }
+
+        function drawFurnitureBorders() {
+            const graphics = new PIXI.Graphics();
+            const processed = new Set();
+            
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (grid[i][j]) {
+                        const fId = grid[i][j].furnitureId;
+                        if (processed.has(fId)) continue;
+                        processed.add(fId);
+                        
+                        // 家具の境界を見つける
+                        const bounds = findFurnitureBounds(i, j, fId);
+                        drawFurnitureBorder(graphics, bounds);
+                    }
+                }
+            }
+            
+            container.addChild(graphics);
+        }
+
+        function findFurnitureBounds(startX, startY, furnitureId) {
+            let minX = startX, maxX = startX;
+            let minY = startY, maxY = startY;
+            
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (grid[i][j] && grid[i][j].furnitureId === furnitureId) {
+                        minX = Math.min(minX, i);
+                        maxX = Math.max(maxX, i);
+                        minY = Math.min(minY, j);
+                        maxY = Math.max(maxY, j);
+                    }
+                }
+            }
+            
+            return { minX, maxX, minY, maxY };
+        }
+
+        function drawFurnitureBorder(graphics, bounds) {
+            graphics.lineStyle(LINE_THICK, LINE_COLOR, 0.8);
+            
+            const topLeft = isoToScreen(bounds.minX, bounds.minY);
+            const topRight = isoToScreen(bounds.maxX + 1, bounds.minY);
+            const bottomRight = isoToScreen(bounds.maxX + 1, bounds.maxY + 1);
+            const bottomLeft = isoToScreen(bounds.minX, bounds.maxY + 1);
+            
+            graphics.moveTo(topLeft.x, topLeft.y);
+            graphics.lineTo(topRight.x, topRight.y);
+            graphics.lineTo(bottomRight.x, bottomRight.y);
+            graphics.lineTo(bottomLeft.x, bottomLeft.y);
+            graphics.lineTo(topLeft.x, topLeft.y);
+        }
+
+        function drawGridLines() {
+            const graphics = new PIXI.Graphics();
+            graphics.lineStyle(LINE_THIN, LINE_COLOR, 0.3);
+            
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                for (let j = 0; j <= GRID_SIZE; j++) {
+                    const pos = isoToScreen(i, j);
+                    
+                    if (j < GRID_SIZE) {
+                        const nextPos = isoToScreen(i, j + 1);
+                        graphics.moveTo(pos.x, pos.y);
+                        graphics.lineTo(nextPos.x, nextPos.y);
+                    }
+                    
+                    if (i < GRID_SIZE) {
+                        const nextPos = isoToScreen(i + 1, j);
+                        graphics.moveTo(pos.x, pos.y);
+                        graphics.lineTo(nextPos.x, nextPos.y);
+                    }
+                }
+            }
+            
+            container.addChild(graphics);
+        }
+
+        function drawTile(x, y, color) {
+            const graphics = new PIXI.Graphics();
+            graphics.beginFill(color);
+            
+            const pos = isoToScreen(x, y);
+            const topRight = isoToScreen(x + 1, y);
+            const bottomRight = isoToScreen(x + 1, y + 1);
+            const bottomLeft = isoToScreen(x, y + 1);
+            
+            graphics.moveTo(pos.x, pos.y);
+            graphics.lineTo(topRight.x, topRight.y);
+            graphics.lineTo(bottomRight.x, bottomRight.y);
+            graphics.lineTo(bottomLeft.x, bottomLeft.y);
+            graphics.closePath();
+            graphics.endFill();
+            
+            container.addChild(graphics);
+            furnitureGraphics.push(graphics);
+        }
+
+        function drawPreview(x, y) {
+            previewContainer.removeChildren();
+            
+            if (!selectedFurniture) return;
+            
+            const w = rotation % 2 === 0 ? selectedFurniture.width : selectedFurniture.height;
+            const h = rotation % 2 === 0 ? selectedFurniture.height : selectedFurniture.width;
+            
+            const canPlace = canPlaceFurniture(x, y, w, h);
+            const previewColor = canPlace ? 0x4CAF50 : 0xF44336;
+            
+            for (let i = 0; i < w; i++) {
+                for (let j = 0; j < h; j++) {
+                    const px = x + i;
+                    const py = y + j;
+                    if (px >= 0 && py >= 0 && px < GRID_SIZE && py < GRID_SIZE) {
+                        drawPreviewTile(px, py, previewColor);
+                    }
+                }
+            }
+        }
+
+        function drawPreviewTile(x, y, color) {
+            const graphics = new PIXI.Graphics();
+            graphics.beginFill(color, 0.4);
+            graphics.lineStyle(2, color, 0.8);
+            
+            const pos = isoToScreen(x, y);
+            const topRight = isoToScreen(x + 1, y);
+            const bottomRight = isoToScreen(x + 1, y + 1);
+            const bottomLeft = isoToScreen(x, y + 1);
+            
+            graphics.moveTo(pos.x, pos.y);
+            graphics.lineTo(topRight.x, topRight.y);
+            graphics.lineTo(bottomRight.x, bottomRight.y);
+            graphics.lineTo(bottomLeft.x, bottomLeft.y);
+            graphics.closePath();
+            graphics.endFill();
+            
+            previewContainer.addChild(graphics);
+        }
+
+        function isoToScreen(x, y) {
+            return {
+                x: (x - y) * TILE_WIDTH,
+                y: (x + y) * TILE_HEIGHT
+            };
+        }
+
+        function screenToIso(screenX, screenY) {
+            const x = screenX - container.x;
+            const y = screenY - container.y;
+            
+            const isoX = (x / TILE_WIDTH + y / TILE_HEIGHT) / 2;
+            const isoY = (y / TILE_HEIGHT - x / TILE_WIDTH) / 2;
+            
+            return {
+                x: Math.floor(isoX),
+                y: Math.floor(isoY)
+            };
+        }
+
+        function canPlaceFurniture(x, y, w, h) {
+            if (x < 0 || y < 0 || x + w > GRID_SIZE || y + h > GRID_SIZE) {
+                return false;
+            }
+            
+            for (let i = x; i < x + w; i++) {
+                for (let j = y; j < y + h; j++) {
+                    if (grid[i][j] !== null) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function placeFurniture(x, y) {
+            if (!selectedFurniture) return;
+            
+            const w = rotation % 2 === 0 ? selectedFurniture.width : selectedFurniture.height;
+            const h = rotation % 2 === 0 ? selectedFurniture.height : selectedFurniture.width;
+            
+            if (!canPlaceFurniture(x, y, w, h)) return;
+            
+            const furnitureId = Date.now() + Math.random();
+            for (let i = x; i < x + w; i++) {
+                for (let j = y; j < y + h; j++) {
+                    grid[i][j] = {
+                        furnitureId: furnitureId,
+                        typeId: selectedFurniture.id,
+                        color: selectedFurniture.color
+                    };
+                }
+            }
+            
+            drawGrid();
+        }
+
+        function removeFurniture(x, y) {
+            if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return;
+            if (!grid[x][y]) return;
+            
+            const furnitureId = grid[x][y].furnitureId;
+            
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (grid[i][j] && grid[i][j].furnitureId === furnitureId) {
+                        grid[i][j] = null;
+                    }
+                }
+            }
+            
+            drawGrid();
+        }
+
+        function setupEvents() {
+            app.view.addEventListener('mousedown', (e) => {
+                if (e.button === 1) { // 中クリック
+                    e.preventDefault();
+                    isDragging = true;
+                    dragStart = { x: e.clientX - containerOffset.x, y: e.clientY - containerOffset.y };
+                    app.view.classList.add('dragging');
+                }
+            });
+
+            app.view.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    containerOffset.x = e.clientX - dragStart.x;
+                    containerOffset.y = e.clientY - dragStart.y;
+                    container.x = containerOffset.x;
+                    container.y = containerOffset.y;
+                    previewContainer.x = containerOffset.x;
+                    previewContainer.y = containerOffset.y;
+                    return;
+                }
+
+                const rect = app.view.getBoundingClientRect();
+                const pos = screenToIso(e.clientX - rect.left, e.clientY - rect.top);
+                
+                if (previewPos && previewPos.x === pos.x && previewPos.y === pos.y) return;
+                previewPos = pos;
+                drawPreview(pos.x, pos.y);
+            });
+
+            app.view.addEventListener('mouseup', (e) => {
+                if (e.button === 1) { // 中クリック
+                    isDragging = false;
+                    app.view.classList.remove('dragging');
+                }
+            });
+
+            app.view.addEventListener('click', (e) => {
+                if (isDragging) return;
+                const rect = app.view.getBoundingClientRect();
+                const pos = screenToIso(e.clientX - rect.left, e.clientY - rect.top);
+                placeFurniture(pos.x, pos.y);
+            });
+
+            app.view.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (isDragging) return;
+                const rect = app.view.getBoundingClientRect();
+                const pos = screenToIso(e.clientX - rect.left, e.clientY - rect.top);
+                removeFurniture(pos.x, pos.y);
+            });
+
+            app.view.addEventListener('mouseleave', () => {
+                previewContainer.removeChildren();
+                previewPos = null;
+                if (isDragging) {
+                    isDragging = false;
+                    app.view.classList.remove('dragging');
+                }
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key.toLowerCase() === 'r') {
+                    rotation = (rotation + 1) % 4;
+                    if (previewPos) {
+                        drawPreview(previewPos.x, previewPos.y);
+                    }
+                }
+            });
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
