@@ -156,9 +156,89 @@
         canvas.dragging {
             cursor: grabbing !important;
         }
+        /* ハンバーガーメニュー */
+        .hamburger-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1100;
+            background: #fff;
+            border: 1px solid #dce3eb;
+            border-radius: 10px;
+            width: 44px;
+            height: 44px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(60,80,100,0.08);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            padding: 10px;
+            transition: all 0.3s ease;
+        }
+        .hamburger-btn:hover { background: #f5f8fa; }
+        .hamburger-line {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: #4a8bd4;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+        .hamburger-btn.active .hamburger-line:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+        .hamburger-btn.active .hamburger-line:nth-child(2) { opacity: 0; }
+        .hamburger-btn.active .hamburger-line:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+        .hamburger-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 1050;
+            opacity: 0; visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .hamburger-overlay.active { opacity: 1; visibility: visible; }
+        .hamburger-menu {
+            position: fixed; top: 0; right: -280px;
+            width: 280px; height: 100vh;
+            background: #fff; z-index: 1080;
+            box-shadow: 0 8px 24px rgba(60,80,100,0.1);
+            transition: right 0.3s ease;
+            padding: 80px 20px 20px;
+            overflow-y: auto;
+        }
+        .hamburger-menu.active { right: 0; }
+        .hamburger-links { list-style: none; padding: 0; margin: 0; }
+        .hamburger-links li { border-bottom: 1px solid #e8eef3; }
+        .hamburger-links li:last-child { border-bottom: none; }
+        .hamburger-links li.hamburger-divider { height: 1px; background: #dce3eb; margin: 8px 0; border-bottom: none; }
+        .hamburger-links a {
+            display: block; padding: 14px 16px;
+            color: #3d4a5c; text-decoration: none;
+            font-size: 0.95rem; font-weight: 700;
+            border-radius: 8px; transition: all 0.2s ease;
+        }
+        .hamburger-links a:hover { background: #e8f1fa; color: #4a8bd4; }
     </style>
 </head>
 <body>
+    <!-- ハンバーガーメニュー -->
+    <button id="hamburgerBtn" class="hamburger-btn" aria-label="メニューを開く" aria-expanded="false">
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+        <span class="hamburger-line"></span>
+    </button>
+    <div id="hamburgerOverlay" class="hamburger-overlay"></div>
+    <nav id="hamburgerMenu" class="hamburger-menu">
+        <ul class="hamburger-links">
+            <li><a href="https://kur-3dcg.github.io/ba-formation-manager/" target="_blank">戦術対抗戦 編成管理</a></li>
+            <li><a href="https://kur-3dcg.github.io/blue-archive-tl-tool/" target="_blank">TL作支援ツール</a></li>
+            <li><a href="https://kur-3dcg.github.io/Tactical-Battle-Stone-Accounting/index.html" target="_blank">石割収支管理ツール</a></li>
+            <li class="hamburger-divider"></li>
+            <li><a href="https://docs.google.com/forms/d/e/1FAIpQLScGvoYZgFFZrDRv6femWcAfS04ryU6OX7gC6-AZ9zF3o1CO6g/viewform?usp=publish-editor" target="_blank">ご意見・ご感想・バグ報告</a></li>
+            <li><a href="https://www.youtube.com/@kur_3dcg" target="_blank">Youtube対抗戦チャンネル</a></li>
+            <li><a href="https://x.com/kur_3dcg" target="_blank">更新・開発情報 (X)</a></li>
+        </ul>
+    </nav>
     <div id="canvas-container"></div>
     <div id="controls">
         <h2>家具を追加</h2>
@@ -827,6 +907,26 @@
         }
 
         window.onload = init;
+    </script>
+    <script>
+        const hamburgerBtn = document.getElementById('hamburgerBtn');
+        const hamburgerMenu = document.getElementById('hamburgerMenu');
+        const hamburgerOverlay = document.getElementById('hamburgerOverlay');
+        function toggleHamburger() {
+            const isOpen = hamburgerBtn.classList.toggle('active');
+            hamburgerMenu.classList.toggle('active');
+            hamburgerOverlay.classList.toggle('active');
+            hamburgerBtn.setAttribute('aria-expanded', isOpen);
+        }
+        function closeHamburger() {
+            hamburgerBtn.classList.remove('active');
+            hamburgerMenu.classList.remove('active');
+            hamburgerOverlay.classList.remove('active');
+            hamburgerBtn.setAttribute('aria-expanded', 'false');
+        }
+        hamburgerBtn.addEventListener('click', toggleHamburger);
+        hamburgerOverlay.addEventListener('click', closeHamburger);
+        hamburgerMenu.addEventListener('click', (e) => { if (e.target.tagName === 'A') closeHamburger(); });
     </script>
 </body>
 </html>
